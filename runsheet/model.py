@@ -17,6 +17,7 @@ class StepState(Enum):
     FINISHED = "finished"
     SKIPPED = "skipped"
     RESTARTED = "restarted"
+    ABORTED = "aborted"
 
 
 def _parse_time_seconds(value: object, field_description: str) -> int:

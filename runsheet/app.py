@@ -16,10 +16,14 @@ from .step_panel import StepPanel, format_hms_fixed
 
 # Which prior states each toolbar action is allowed to act on. Restart
 # resets a step back to PENDING (see _apply_action), so StepState.RESTARTED
-# is never a resting step.state and doesn't appear as a value here.
+# is never a resting step.state and doesn't appear as a value here. Abort is
+# the same: it resolves to StepState.FINISHED (see _apply_action), just like
+# Finish does, so StepState.ABORTED is also only ever a target-state token,
+# never a resting step.state.
 _ALLOWED_FROM: dict[StepState, tuple[StepState, ...]] = {
     StepState.ACTIVE: (StepState.PENDING,),
     StepState.FINISHED: (StepState.ACTIVE,),
+    StepState.ABORTED: (StepState.ACTIVE,),
     StepState.RESTARTED: (StepState.ACTIVE, StepState.FINISHED, StepState.SKIPPED),
     StepState.SKIPPED: (StepState.PENDING, StepState.ACTIVE),
 }
@@ -28,6 +32,7 @@ _ACTIONS: tuple[tuple[StepState, str, str, str], ...] = (
     # (target state, label text, background color, foreground color)
     (StepState.ACTIVE, "START", theme.GREEN, theme.WHITE),
     (StepState.FINISHED, "FINISH", theme.BLUE, theme.WHITE),
+    (StepState.ABORTED, "ABORT", theme.RED, theme.WHITE),
     (StepState.RESTARTED, "RESET", theme.AMBER_PILL_BG, theme.AMBER_PILL_TEXT),
     (StepState.SKIPPED, "SKIP", theme.BLACK, theme.WHITE),
 )
@@ -438,7 +443,11 @@ class RunsheetApp(tk.Tk):
             panel.set_expanded(True)
             if self.run_started_at is None:
                 self.run_started_at = now
-        elif target_state is StepState.FINISHED:
+        elif target_state in (StepState.FINISHED, StepState.ABORTED):
+            # Abort resolves to the same resting state as Finish (FINISHED)
+            # — it's a normal, complete step as far as sequencing and the
+            # badge are concerned. Only the log event distinguishes it, to
+            # record that the step didn't succeed.
             if step.started_at is not None:
                 step.elapsed_seconds = now - step.started_at
             step.started_at = None

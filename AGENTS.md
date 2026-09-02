@@ -16,13 +16,44 @@ user explicitly asks to change one.
 
 ### Step state machine
 
-- States: `PENDING`, `ACTIVE`, `FINISHED`, `SKIPPED`. `RESTARTED` is a
-  transient *action* identifier only (toolbar target state, log event
-  name) — it is never a resting `step.state`; Reset always resolves
-  directly to `PENDING`.
+- States: `PENDING`, `ACTIVE`, `FINISHED`, `SKIPPED`. `RESTARTED` and
+  `ABORTED` are transient *action* identifiers only (toolbar target
+  state, log event name) — neither is ever a resting `step.state`:
+  Reset always resolves directly to `PENDING`, and Abort always
+  resolves directly to `FINISHED`.
 - Allowed transitions (`_ALLOWED_FROM` in `app.py`): Start `PENDING` ->
-  `ACTIVE`; Finish `ACTIVE` -> `FINISHED`; Reset `ACTIVE`/`FINISHED`/
-  `SKIPPED` -> `PENDING`; Skip `PENDING`/`ACTIVE` -> `SKIPPED`.
+  `ACTIVE`; Finish `ACTIVE` -> `FINISHED`; Abort `ACTIVE` -> `FINISHED`;
+  Reset `ACTIVE`/`FINISHED`/`SKIPPED` -> `PENDING`; Skip
+  `PENDING`/`ACTIVE` -> `SKIPPED`.
+- Abort is Finish with a different log event: same resting state
+  (`FINISHED`), same auto-collapse/auto-advance behavior, same badge
+  (tick) — only the JSONL event name (`aborted` vs `finished`) records
+  that the step didn't succeed. There is deliberately no separate
+  "aborted" resting state or badge; don't add one without the user
+  asking.
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING
+
+    PENDING --> ACTIVE : Start
+    PENDING --> SKIPPED : Skip
+
+    ACTIVE --> FINISHED : Finish
+    ACTIVE --> FINISHED : Abort
+    ACTIVE --> SKIPPED : Skip
+    ACTIVE --> PENDING : Reset
+
+    FINISHED --> PENDING : Reset (confirm)
+    SKIPPED --> PENDING : Reset
+
+    note right of FINISHED
+        Finish and Abort land on the same
+        resting state; only the JSONL log
+        event differs (finished vs aborted).
+    end note
+```
+
 - **More than one step can be `ACTIVE` at once.** Steps can be started
   out of order; nothing enforces linear sequencing. Selection-advance
   and any "what's next" logic must account for this — never assume the
@@ -53,12 +84,53 @@ user explicitly asks to change one.
 ### Toolbar layout
 
 - Two labeled groups, left-to-right: RUNSHEET (the time-guidance clock
-  if configured, then END) then STEP (Start/Finish/Reset/Skip).
+  if configured, then END) then STEP (Start/Finish/Abort/Reset/Skip).
 - END is always enabled, independent of runsheet completion — ending
   is a valid action at any point, not just when finished. Clicking it
   always opens a 3-choice modal: Cancel / Exit, Keep Log / Exit,
   Delete Log. It never just "locks the toolbar and stays open" — the
   only outcomes are cancel or a real process exit.
+
+### Runsheet session lifecycle
+
+- Not a `step.state` machine — there's no `RunsheetState` enum in code —
+  but the session has an implicit lifecycle worth keeping straight:
+  `NotStarted` (before any step's first Start; `run_started_at is
+  None`) -> `Running` (from the first Start of the session, whichever
+  step that is) -> `Ended` (a `session_end` log event, then the window
+  is destroyed — via End / Keep Log, End / Delete Log, or the window's
+  close button; End's Cancel choice does not transition anything).
+- While `Running`, if `time_guidance` is configured the RUNSHEET clock
+  has its own two-phase sub-state — `CountingDown` then `OverTime` —
+  described fully under Clocks below.
+
+```mermaid
+stateDiagram-v2
+    [*] --> NotStarted
+
+    NotStarted --> Running : first step Started
+
+    state Running {
+        [*] --> CountingDown
+        CountingDown --> OverTime : elapsed >= time_guidance
+    }
+
+    NotStarted --> Ended : End (keep/delete log) or window closed
+    Running --> Ended : End (keep/delete log) or window closed
+
+    Ended --> [*]
+
+    note right of Running
+        CountingDown / OverTime only apply
+        when time_guidance is configured;
+        otherwise Running has no clock.
+    end note
+
+    note right of Ended
+        End dialog's Cancel choice does not
+        transition state - it stays put.
+    end note
+```
 
 ### Clocks
 
