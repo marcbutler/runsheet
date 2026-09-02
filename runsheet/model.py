@@ -217,18 +217,34 @@ class Step:
 
 
 @dataclass
+class Note:
+    """A [[Step]] entry with kind = "note" — plain informational text
+    interspersed between steps, never part of the step list or state
+    machine. `after_step` anchors it in the runsheet's display order: 0
+    means before the first step, N means immediately after step N (so a
+    note that appeared after the last step in the file gets N ==
+    len(runsheet.steps))."""
+
+    after_step: int
+    text: str
+
+
+@dataclass
 class Runsheet:
     path: Path
     sha1: str
     name: str = ""  # from an optional [Runsheet] name=... metadata table
     time_guidance_seconds: int | None = None  # from an optional [Runsheet] time_guidance=...
-    announcement_started: str = ""
-    announcement_finished: str = ""
     steps: list[Step] = field(default_factory=list)
-
-    @property
-    def has_announcements(self) -> bool:
-        return bool(self.announcement_started or self.announcement_finished)
+    # Runsheet-wide start/finish messages used to be their own
+    # [Runsheet]-level announcement_started/announcement_finished fields,
+    # rendered as bookend pseudo steps. Superseded by kind="note" [[Step]]
+    # entries at after_step 0 / after the last step — one mechanism for
+    # "informational text at a position in the runsheet" instead of two
+    # overlapping ones. Removed rather than deprecated-and-kept, on the
+    # view that consolidating now is cheaper than carrying both forever
+    # once real runsheets exist to stay backward compatible with.
+    notes: list[Note] = field(default_factory=list)
 
     @classmethod
     def load(cls, path: Path) -> Runsheet:
@@ -256,54 +272,87 @@ class Runsheet:
                 time_guidance_value, f"{path}: [Runsheet] field 'time_guidance'"
             )
 
-        runsheet_announcement_started, runsheet_announcement_finished = _paired_announcements(
-            metadata, f"{path}: [Runsheet]"
-        )
-        runsheet_announcement_started = _substitute(
-            runsheet_announcement_started, variables, f"{path}: [Runsheet] field 'announcement_started'"
-        )
-        runsheet_announcement_finished = _substitute(
-            runsheet_announcement_finished, variables, f"{path}: [Runsheet] field 'announcement_finished'"
-        )
-
         entries = data.get("Step", [])
         if not isinstance(entries, list) or not entries:
             raise ValueError(f"{path}: no [[Step]] entries found")
 
+        # [[Step]] holds both real steps and interspersed notes, told apart
+        # by an optional 'kind' field ("task", the default, or "note") —
+        # kept as a single TOML array (rather than two) specifically so
+        # tomllib's parse preserves their true relative order; see
+        # RUNSHEET.md. task_index (not the raw file position i) is what
+        # becomes a Step's 1-based index and a Note's after_step anchor, so
+        # notes never disturb step numbering.
         steps: list[Step] = []
+        notes: list[Note] = []
+        task_index = 0
         for i, entry in enumerate(entries, start=1):
+            if not isinstance(entry, dict):
+                raise ValueError(f"{path}: [[Step]] entry {i} must be a table")
+            kind = entry.get("kind", "task")
+            if kind not in ("task", "note"):
+                raise ValueError(
+                    f"{path}: [[Step]] entry {i} has invalid 'kind' {kind!r} — "
+                    f"must be 'task' or 'note'"
+                )
+
+            if kind == "note":
+                text = entry.get("text")
+                if not text or not isinstance(text, str):
+                    raise ValueError(
+                        f"{path}: [[Step]] entry {i} (a note, after step {task_index}) is "
+                        f"missing required field 'text'"
+                    )
+                notes.append(Note(
+                    after_step=task_index,
+                    text=_substitute(text, variables, f"{path}: [[Step]] entry {i} field 'text'"),
+                ))
+                continue
+
+            task_index += 1
             summary = entry.get("summary")
             if not summary or not isinstance(summary, str):
-                raise ValueError(f"{path}: Step {i} is missing required field 'summary'")
+                raise ValueError(f"{path}: Step {task_index} is missing required field 'summary'")
 
             budget_seconds = None
             time_value = entry.get("time")
             if time_value is not None:
-                budget_seconds = _parse_time_seconds(time_value, f"{path}: Step {i} field 'time'")
+                budget_seconds = _parse_time_seconds(
+                    time_value, f"{path}: Step {task_index} field 'time'"
+                )
 
             announcement_started, announcement_finished = _paired_announcements(
-                entry, f"{path}: Step {i}"
+                entry, f"{path}: Step {task_index}"
             )
 
             steps.append(
                 Step(
-                    index=i,
-                    summary=_substitute(summary, variables, f"{path}: Step {i} field 'summary'"),
+                    index=task_index,
+                    summary=_substitute(
+                        summary, variables, f"{path}: Step {task_index} field 'summary'"
+                    ),
                     description=_substitute(
-                        entry.get("description", ""), variables, f"{path}: Step {i} field 'description'"
+                        entry.get("description", ""), variables,
+                        f"{path}: Step {task_index} field 'description'",
                     ),
                     budget_seconds=budget_seconds,
                     commands=_substitute(
-                        entry.get("commands", ""), variables, f"{path}: Step {i} field 'commands'"
+                        entry.get("commands", ""), variables,
+                        f"{path}: Step {task_index} field 'commands'",
                     ),
                     announcement_started=_substitute(
-                        announcement_started, variables, f"{path}: Step {i} field 'announcement_started'"
+                        announcement_started, variables,
+                        f"{path}: Step {task_index} field 'announcement_started'",
                     ),
                     announcement_finished=_substitute(
-                        announcement_finished, variables, f"{path}: Step {i} field 'announcement_finished'"
+                        announcement_finished, variables,
+                        f"{path}: Step {task_index} field 'announcement_finished'",
                     ),
                 )
             )
+
+        if not steps:
+            raise ValueError(f"{path}: no task steps found (every [[Step]] entry is a note)")
 
         if time_guidance_seconds is not None:
             specified_seconds = sum(s.budget_seconds for s in steps if s.budget_seconds is not None)
@@ -318,9 +367,8 @@ class Runsheet:
         return cls(
             path=path, sha1=sha1, name=name,
             time_guidance_seconds=time_guidance_seconds,
-            announcement_started=runsheet_announcement_started,
-            announcement_finished=runsheet_announcement_finished,
             steps=steps,
+            notes=notes,
         )
 
     @property

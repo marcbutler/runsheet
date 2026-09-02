@@ -161,12 +161,35 @@ stateDiagram-v2
 - Per-step ANNOUNCEMENTS box (STARTED/FINISHED rows + Copy chips): only
   rendered when the step has any; sits at the *bottom* of the step
   body, after Commands.
-- Runsheet-level announcements render as two "pseudo step" panels
-  bookending the real step list (RUNSHEET STARTED before the first
-  step, RUNSHEET FINISHED after the last) — not a separate banner.
-  These are plain `tk.Frame` widgets, never added to `self.panels` or
-  `runsheet.steps`, so they must stay invisible to selection, the
-  state machine, scrolling math, and the progress count.
+- There is deliberately no runsheet-level equivalent (no
+  `[Runsheet]`-level `announcement_started`/`announcement_finished`
+  any more — removed once Notes shipped, since a note at `after_step`
+  0 or at the end covers the same "whole run" case; see Notes below).
+  Don't re-add a separate runsheet-wide announcement mechanism — route
+  that need through Notes instead.
+
+### Notes
+
+- A `[[Step]]` entry with `kind = "note"` (default `kind` is `"task"`)
+  is a `Note` (`model.py`), not a `Step` — plain informational text
+  with no summary/state/commands, rendered as an `AnnouncementStep`
+  pseudo-panel (title `"NOTE"`, `theme.GRAY` accent — that class is
+  named for its original use bookending the runsheet, now generalized
+  to any note), never added to `self.panels` or `runsheet.steps`, so
+  it stays invisible to selection, the state machine, scrolling math,
+  and the progress count.
+- Both `[[Step]]` kinds share one TOML array specifically so tomllib's
+  parse preserves their true relative order (two separately-named
+  arrays-of-tables lose the interleaving between them — see
+  RUNSHEET.md). `Note.after_step` is the anchor this order gets turned
+  into: 0 = before the first step, N = immediately after step N (task
+  numbering, not raw file position) — `_build_runsheet_view` packs
+  `pack_notes(0)` before the loop and `pack_notes(step.index)` after
+  each step. Any future note-positioning feature should extend this
+  anchor, not invent a second scheme.
+- A note never advances `task_index`, so step numbering (`Step.index`,
+  and everything downstream of it: the UI heading, `--export`) counts
+  only real steps — interspersing notes must never renumber them.
 
 ### Footer
 

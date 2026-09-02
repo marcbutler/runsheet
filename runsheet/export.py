@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import textwrap
 
-from .model import Runsheet, Step, format_seconds
+from .model import Note, Runsheet, Step, format_seconds
 
 # Free-text (descriptions, announcements) wraps at 100 columns for a
 # readable, print-friendly width. Headings, rules, and commands are never
@@ -46,6 +46,10 @@ def _indent_commands(commands: str) -> str:
     return "\n".join(f"    {line}" if line.strip() else "" for line in lines)
 
 
+def _note_text(note: Note) -> str:
+    return "\n".join(_wrap(note.text, "Note: "))
+
+
 def _step_text(step: Step) -> str:
     heading = f"Step {step.index}: {step.summary}"
     sections: list[str] = []
@@ -71,21 +75,22 @@ def _step_text(step: Step) -> str:
 
 def export_text(runsheet: Runsheet) -> str:
     """Render `runsheet` as sparse plain text: a compact metadata header
-    (name, time guidance, runsheet-level announcements — whichever are
-    set), then each step as its own rule-delimited section listing only
-    the fields it actually sets, in a fixed order (time budget,
-    description, commands, announcements)."""
+    (name, time guidance — whichever are set), then each step as its own
+    rule-delimited section listing only the fields it actually sets, in a
+    fixed order (time budget, description, commands, announcements).
+    Notes (kind = "note" [[Step]] entries) are interspersed among the
+    steps by their after_step anchor, matching the UI's ordering."""
+    notes_by_anchor: dict[int, list[Note]] = {}
+    for note in runsheet.notes:
+        notes_by_anchor.setdefault(note.after_step, []).append(note)
+
     header = [runsheet.name, _rule(runsheet.name, "=")]
     if runsheet.time_guidance_seconds is not None:
         header.append(f"Time guidance: {format_seconds(runsheet.time_guidance_seconds)}")
-    if runsheet.has_announcements:
-        header.extend(
-            _paired_lines(
-                "Started:", "Finished:",
-                runsheet.announcement_started, runsheet.announcement_finished,
-            )
-        )
 
     parts = ["\n".join(header)]
-    parts.extend(_step_text(step) for step in runsheet.steps)
+    parts.extend(_note_text(note) for note in notes_by_anchor.get(0, []))
+    for step in runsheet.steps:
+        parts.append(_step_text(step))
+        parts.extend(_note_text(note) for note in notes_by_anchor.get(step.index, []))
     return "\n\n".join(parts) + "\n"

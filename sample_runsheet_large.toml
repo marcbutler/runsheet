@@ -4,12 +4,14 @@
 [Runsheet]
 name = "{{change_ticket}} — K8s v1.29 + PG Failover"
 time_guidance = 03:00:00
-announcement_started = "Started sample runsheet"
-announcement_finished = "Finished sample runsheet"
 
 [Runsheet.variables]
 change_ticket = "CHG-48213"
 pg_replica = "pg-replica-02"
+
+[[Step]]
+kind = "note"
+text = "Started sample runsheet"
 
 [[Step]]
 summary = "Confirm change ticket {{change_ticket}} is approved and the maintenance window is open"
@@ -186,3 +188,7 @@ description = "Do not run this today — this is a reminder for the follow-up ti
 
 [[Step]]
 summary = "Close change ticket {{change_ticket}} and archive the runsheet log"
+
+[[Step]]
+kind = "note"
+text = "Finished sample runsheet"

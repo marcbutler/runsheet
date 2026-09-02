@@ -1,8 +1,10 @@
 [Runsheet]
 name = "Prod DB Migration"
 time_guidance = 00:05:00
-announcement_started = "Sample runsheet STARTED"
-announcement_finished = "Sample runsheet FINISHED"
+
+[[Step]]
+kind = "note"
+text = "Sample runsheet STARTED"
 
 [[Step]]
 summary = "Verify maintenance window with NOC"
@@ -46,3 +48,7 @@ description = "Flip the maintenance-mode flag off and confirm traffic resumes."
 commands = """
 curl -X POST "$LB_API/pools/prod/enable"
 """
+
+[[Step]]
+kind = "note"
+text = "Sample runsheet FINISHED"

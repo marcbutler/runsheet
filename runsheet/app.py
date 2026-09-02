@@ -11,7 +11,7 @@ import tkinter.ttk as ttk
 from . import theme
 from .announcements import AnnouncementStep
 from .logbook import Logbook
-from .model import Runsheet, Step, StepState
+from .model import Note, Runsheet, Step, StepState
 from .step_panel import StepPanel, format_hms_fixed
 
 # Which prior states each toolbar action is allowed to act on. Restart
@@ -208,19 +208,24 @@ class RunsheetApp(tk.Tk):
             canvas.bind_all(sequence, handler)
             self._bind_scroll_recursive(self.list_frame, sequence, handler)
 
-        # The runsheet's overall start/finish announcements (if any) bookend
-        # the list as pseudo steps — not real Step objects, so they never
-        # touch self.panels / self.runsheet.steps and stay outside the
-        # state machine, selection, and progress count entirely.
-        pseudo_steps: list[tk.Frame] = []
-        if self.runsheet.has_announcements:
-            start_step = AnnouncementStep(
-                self.list_frame, "RUNSHEET STARTED", self.runsheet.announcement_started,
-                theme.GREEN,
-            )
-            start_step.pack(fill="x", padx=20, pady=6)
-            pseudo_steps.append(start_step)
+        # Any [[Step]] entries with kind = "note" (see model.py) are
+        # interspersed among the steps by their after_step anchor, as
+        # pseudo steps that never touch self.panels / self.runsheet.steps —
+        # staying outside the state machine, selection, and progress count
+        # entirely.
+        notes_by_anchor: dict[int, list[Note]] = {}
+        for note in self.runsheet.notes:
+            notes_by_anchor.setdefault(note.after_step, []).append(note)
 
+        pseudo_steps: list[tk.Frame] = []
+
+        def pack_notes(anchor: int) -> None:
+            for note in notes_by_anchor.get(anchor, []):
+                note_panel = AnnouncementStep(self.list_frame, "NOTE", note.text, theme.GRAY)
+                note_panel.pack(fill="x", padx=20, pady=6)
+                pseudo_steps.append(note_panel)
+
+        pack_notes(0)
         for step in self.runsheet.steps:
             panel = StepPanel(self.list_frame, step, on_select=self._select)
             panel.pack(fill="x", padx=20, pady=6)
@@ -228,14 +233,7 @@ class RunsheetApp(tk.Tk):
             self._bind_scroll_recursive(panel, "<MouseWheel>", on_mousewheel)
             self._bind_scroll_recursive(panel, "<Button-4>", on_scroll_up)
             self._bind_scroll_recursive(panel, "<Button-5>", on_scroll_down)
-
-        if self.runsheet.has_announcements:
-            finish_step = AnnouncementStep(
-                self.list_frame, "RUNSHEET FINISHED", self.runsheet.announcement_finished,
-                theme.BLUE,
-            )
-            finish_step.pack(fill="x", padx=20, pady=6)
-            pseudo_steps.append(finish_step)
+            pack_notes(step.index)
 
         for pseudo in pseudo_steps:
             self._bind_scroll_recursive(pseudo, "<MouseWheel>", on_mousewheel)
