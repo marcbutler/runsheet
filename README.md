@@ -2,6 +2,13 @@
 
 A basic portable UI for following a click-ops runsheet (checklist).
 
+## Features
+
+- Sequencing with automatic advance.
+- Parallel execution.
+- Optional timers.
+- Session log in JSONL.
+
 ## Requires
 
 - Python 3.14 or greater with Tkinter support
