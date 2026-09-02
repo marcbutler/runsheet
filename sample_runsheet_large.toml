@@ -1,0 +1,188 @@
+# Runsheet: Kubernetes v1.29 upgrade + Postgres primary failover
+# Change ticket: CHG-48213 · Window: 2026-09-06 02:00-05:00 UTC
+
+[Runsheet]
+name = "{{change_ticket}} — K8s v1.29 + PG Failover"
+time_guidance = 03:00:00
+announcement_started = "Started sample runsheet"
+announcement_finished = "Finished sample runsheet"
+
+[Runsheet.variables]
+change_ticket = "CHG-48213"
+pg_replica = "pg-replica-02"
+
+[[Step]]
+summary = "Confirm change ticket {{change_ticket}} is approved and the maintenance window is open"
+
+[[Step]]
+summary = "Page on-call SRE and confirm availability for the window"
+description = "Two SREs minimum on the bridge before any cordon/drain begins. Escalate to the secondary if primary doesn't ack within 5 minutes."
+
+[[Step]]
+summary = "Snapshot current cluster state for rollback reference"
+time = 00:00:20
+
+[[Step]]
+summary = "Take an etcd backup"
+commands = "etcdctl snapshot save /backups/etcd/pre-upgrade-$(date +%Y%m%d%H%M).db"
+
+[[Step]]
+summary = "Verify the etcd backup integrity"
+description = "A backup we haven't verified isn't a backup. Confirm the snapshot status reports a matching hash and revision before proceeding."
+commands = """
+etcdctl snapshot status /backups/etcd/pre-upgrade-*.db --write-out=table
+
+etcdctl endpoint status --write-out=table
+"""
+
+[[Step]]
+summary = "Cordon node pool workers-a"
+commands = "kubectl cordon -l pool=workers-a"
+
+[[Step]]
+summary = "Drain node pool workers-a"
+description = "Allow PodDisruptionBudgets to be respected; do not force unless a node hangs past the budget."
+time = 00:08:00
+commands = """
+kubectl drain -l pool=workers-a \\
+  --ignore-daemonsets \\
+  --delete-emptydir-data \\
+  --timeout=300s
+"""
+
+[[Step]]
+summary = "Post maintenance-mode banner on the status page"
+description = "Use the pre-approved wording from the {{change_ticket}} comms template, not free text."
+
+[[Step]]
+summary = "Pause non-critical CronJobs"
+commands = """
+kubectl get cronjob -n batch -o name | xargs -I{} kubectl patch {} -n batch -p '{"spec":{"suspend":true}}'
+"""
+
+[[Step]]
+summary = "Scale down the batch-processing deployment to 0 replicas"
+time = 00:02:00
+commands = "kubectl scale deployment/batch-processor -n batch --replicas=0"
+
+[[Step]]
+summary = "Verify no in-flight batch jobs remain"
+description = "Check the job queue depth in the batch dashboard, not just pod count — a job can be mid-flight with zero running pods if it's between retries."
+time = 00:05:00
+
+[[Step]]
+summary = "Upgrade the control plane to v1.29.2"
+description = "This is the point of no easy return for this window — confirm the etcd backup step above is verified before starting. Expect the API server to briefly 503 during the rollout."
+time = 00:20:00
+commands = """
+kops upgrade cluster --yes
+
+kops update cluster --yes
+
+kops rolling-update cluster --instance-group control-plane --yes
+"""
+announcement_started = "🔧 [{{change_ticket}}] Beginning k8s control plane upgrade to v1.29.2. API server may briefly 503 — expect deploys/kubectl to be flaky for the next ~20 min."
+announcement_finished = "✅ [{{change_ticket}}] Control plane upgrade to v1.29.2 complete and healthy. Moving on to node pool upgrades."
+
+[[Step]]
+summary = "Verify control plane health and API server version"
+commands = "kubectl version --short && kubectl get componentstatuses"
+
+[[Step]]
+summary = "Upgrade node pool workers-a to the v1.29.2 image"
+description = "Rolling replace, not in-place — nodes are cattle. Watch `kubectl get nodes -w` in a second pane while this runs."
+time = 00:15:00
+commands = """
+kops upgrade cluster --instance-group workers-a --yes
+kops rolling-update cluster --instance-group workers-a --yes --validate-count=3
+"""
+
+[[Step]]
+summary = "Uncordon workers-a and verify pods reschedule"
+time = 00:04:00
+commands = "kubectl uncordon -l pool=workers-a"
+
+[[Step]]
+summary = "Repeat the upgrade for node pool workers-b"
+description = "Same steps as workers-a: cordon, drain, upgrade image, rolling-update, uncordon."
+time = 00:15:00
+commands = """
+kops upgrade cluster --instance-group workers-b --yes
+kops rolling-update cluster --instance-group workers-b --yes --validate-count=3
+"""
+
+[[Step]]
+summary = "Repeat the upgrade for node pool workers-c"
+
+[[Step]]
+summary = "Validate cluster-wide node versions match v1.29.2"
+commands = "kubectl get nodes -o custom-columns=NAME:.metadata.name,VERSION:.status.nodeInfo.kubeletVersion"
+
+[[Step]]
+summary = "Promote Postgres replica {{pg_replica}} to the new primary"
+description = "Coordinate on the bridge before running this — it is the irreversible cutover point for the database. Confirm replication lag is 0 immediately beforehand."
+time = 00:10:00
+commands = """
+ssh {{pg_replica}} 'sudo -u postgres pg_ctl promote -D /var/lib/postgresql/16/main'
+ssh {{pg_replica}} 'psql -c "SELECT pg_is_in_recovery();"'
+"""
+announcement_started = "🔧 [{{change_ticket}}] Promoting {{pg_replica}} to primary now — this is the DB cutover. Writes may briefly fail during the switch."
+announcement_finished = "✅ [{{change_ticket}}] Postgres cutover complete, {{pg_replica}} is the new primary. Updating app connection secrets next."
+
+[[Step]]
+summary = "Update application DB connection secrets to point at the new primary"
+commands = """
+kubectl create secret generic db-creds -n prod \\
+  --from-literal=host={{pg_replica}}.internal \\
+  --dry-run=client -o yaml | kubectl apply -f -
+"""
+
+[[Step]]
+summary = "Restart application deployments to pick up the new DB secret"
+time = 00:03:00
+commands = "kubectl rollout restart deployment -n prod -l tier=backend"
+
+[[Step]]
+summary = "Verify application health checks are green across all pods"
+description = "Check the readiness probe status per pod, not just the deployment's overall availableReplicas count."
+time = 00:05:00
+
+[[Step]]
+summary = "Resume the paused CronJobs"
+commands = """
+kubectl get cronjob -n batch -o name | xargs -I{} kubectl patch {} -n batch -p '{"spec":{"suspend":false}}'
+"""
+
+[[Step]]
+summary = "Scale the batch-processing deployment back to its prior replica count"
+time = 00:02:00
+commands = "kubectl scale deployment/batch-processor -n batch --replicas=4"
+
+[[Step]]
+summary = "Run the smoke test suite against production"
+description = "Full suite, not the fast subset — this is the gate before we tell stakeholders we're done."
+time = 00:10:00
+commands = """
+make smoke-test ENV=prod
+tail -f /var/log/smoke-test/latest.log
+"""
+
+[[Step]]
+summary = "Monitor error rate and latency dashboards"
+description = "Watch the prod overview dashboard for a full cycle before declaring the window closed. A slow leak here is easier to catch now than at 9am tomorrow."
+time = 00:15:00
+
+[[Step]]
+summary = "Remove the maintenance-mode banner from the status page"
+commands = "curl -X POST \"$STATUS_PAGE_WEBHOOK\" -d '{\"status\":\"resolved\"}'"
+
+[[Step]]
+summary = "Notify stakeholders that the migration is complete"
+description = "Post the closing update in #eng-announcements and reply-all on the original {{change_ticket}} notice thread."
+
+[[Step]]
+summary = "Decommission the old Postgres primary pg-primary-01 after a 24h soak"
+description = "Do not run this today — this is a reminder for the follow-up ticket. Leave pg-primary-01 running read-only as a fallback until the soak period passes."
+
+[[Step]]
+summary = "Close change ticket {{change_ticket}} and archive the runsheet log"

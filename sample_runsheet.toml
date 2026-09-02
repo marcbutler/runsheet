@@ -1,0 +1,48 @@
+[Runsheet]
+name = "Prod DB Migration"
+time_guidance = 00:05:00
+announcement_started = "Sample runsheet STARTED"
+announcement_finished = "Sample runsheet FINISHED"
+
+[[Step]]
+summary = "Verify maintenance window with NOC"
+description = "Confirm the change window is open in the ticketing system before touching anything."
+time = 00:00:10
+
+[[Step]]
+summary = "Notify downstream consumers via #status-page"
+description = "Post a heads-up in the status channel so on-call teams aren't surprised by the restarts."
+time = 00:02:00
+commands = """
+curl -X POST "$STATUS_PAGE_WEBHOOK" -d '{"message":"starting scheduled maintenance"}'
+"""
+
+[[Step]]
+summary = "Restart application service on web-03 / web-04"
+description = "Rolling restart of the app service, one node at a time. Confirm the health check passes before moving to the next node. Page on-call if a health check fails twice in a row."
+time = 00:01:00
+commands = """
+ssh web-03 'sudo systemctl restart app.service'
+ssh web-03 'curl -sf localhost:8080/healthz'
+
+ssh web-04 'sudo systemctl restart app.service'
+ssh web-04 'curl -sf localhost:8080/healthz'
+"""
+
+[[Step]]
+summary = "Run database migration 0042"
+description = "Applies the pending schema migration. Take a backup snapshot first."
+time = 00:00:50
+commands = """
+pg_dump prod > /backups/pre_0042.sql
+psql prod -f migrations/0042_add_index.sql
+"""
+announcement_started = "🔧 Starting DB migration 0042 (add index) against prod. Expect brief query slowdowns."
+announcement_finished = "✅ DB migration 0042 complete. Prod is back to normal."
+
+[[Step]]
+summary = "Re-enable traffic in load balancer"
+description = "Flip the maintenance-mode flag off and confirm traffic resumes."
+commands = """
+curl -X POST "$LB_API/pools/prod/enable"
+"""
