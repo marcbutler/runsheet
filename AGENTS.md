@@ -172,12 +172,16 @@ stateDiagram-v2
 
 - A `[[Step]]` entry with `kind = "note"` (default `kind` is `"task"`)
   is a `Note` (`model.py`), not a `Step` — plain informational text
-  with no summary/state/commands, rendered as an `AnnouncementStep`
-  pseudo-panel (title `"NOTE"`, `theme.GRAY` accent — that class is
-  named for its original use bookending the runsheet, now generalized
-  to any note), never added to `self.panels` or `runsheet.steps`, so
-  it stays invisible to selection, the state machine, scrolling math,
-  and the progress count.
+  with no summary/state/commands, rendered as a `NoteStep` pseudo-panel
+  (`announcements.py`), never added to `self.panels` or
+  `runsheet.steps`, so it stays invisible to selection, the state
+  machine, scrolling math, and the progress count.
+- `NoteStep` is deliberately styled *unlike* a `StepPanel` — tinted
+  `theme.NOTE_TINT` background plus a left accent stripe (the outer
+  frame's own `theme.GRAY` background peeking through the inner
+  content frame's asymmetric left padding) — specifically so a note
+  doesn't read as just another (oddly shaped) step while scrolling.
+  Keep that distinction if either widget's styling changes.
 - Both `[[Step]]` kinds share one TOML array specifically so tomllib's
   parse preserves their true relative order (two separately-named
   arrays-of-tables lose the interleaving between them — see

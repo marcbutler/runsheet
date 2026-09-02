@@ -2,9 +2,11 @@
 
 - AnnouncementsBox: a bordered 'ANNOUNCEMENTS' panel with STARTED/FINISHED
   rows, used inside a step panel for its per-step announcements.
-- AnnouncementStep: a minimal single-message 'pseudo step' panel — no
-  summary, state, or commands, just the text and a Copy chip — used to
-  bookend the runsheet view with its overall start/finish announcements.
+- NoteStep: a minimal single-message 'pseudo step' panel for a kind="note"
+  [[Step]] entry (model.Note) — no summary, state, or commands, just the
+  text and a Copy chip, interspersed among the real steps or bookending
+  the list. Styled distinctly from a real StepPanel (tinted background +
+  a left accent stripe) so it doesn't read as just another step.
 """
 
 from __future__ import annotations
@@ -64,23 +66,31 @@ class AnnouncementsBox(tk.Frame):
         make_copy_chip(row, text).pack(side="right", anchor="n")
 
 
-class AnnouncementStep(tk.Frame):
-    """A bookend 'pseudo step' panel for the runsheet's overall start/finish
-    announcement — styled like a step panel's outer frame, but its only
-    content is the announcement text and a Copy chip."""
+class NoteStep(tk.Frame):
+    """A pseudo step panel for a single note: no summary, state, or
+    commands, just the text and a Copy chip. The outer frame's own
+    background shows through as a left accent stripe (via the inner
+    content frame's asymmetric padding) and the content frame itself uses
+    a distinct tint — both deliberately different from a StepPanel's
+    plain white — so a note reads as a different kind of card, not just
+    another (oddly shaped) step, while scrolling past it."""
 
-    def __init__(self, master: tk.Misc, title: str, text: str, accent: str):
+    def __init__(self, master: tk.Misc, text: str):
         super().__init__(
-            master, bg=theme.BG_PANEL, highlightthickness=1, highlightbackground=theme.BORDER,
+            master, bg=theme.GRAY, highlightthickness=1, highlightbackground=theme.BORDER,
         )
+        content = tk.Frame(self, bg=theme.NOTE_TINT)
+        content.pack(fill="both", expand=True, padx=(4, 0))
+
         tk.Label(
-            self, text=title, bg=theme.BG_PANEL, fg=accent, font=("TkDefaultFont", 10, "bold"),
+            content, text="NOTE", bg=theme.NOTE_TINT, fg=theme.GRAY,
+            font=("TkDefaultFont", 10, "bold"),
         ).pack(anchor="w", padx=14, pady=(10, 4))
 
-        row = tk.Frame(self, bg=theme.BG_PANEL)
+        row = tk.Frame(content, bg=theme.NOTE_TINT)
         row.pack(fill="x", padx=14, pady=(0, 10))
         tk.Label(
-            row, text=text, bg=theme.BG_PANEL, fg=theme.TEXT_PRIMARY,
+            row, text=text, bg=theme.NOTE_TINT, fg=theme.TEXT_PRIMARY,
             font=("TkDefaultFont", 9), justify="left", anchor="w", wraplength=900,
         ).pack(side="left", fill="x", expand=True, padx=(0, 8))
         make_copy_chip(row, text).pack(side="right")

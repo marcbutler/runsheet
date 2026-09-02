@@ -9,7 +9,7 @@ import tkinter.messagebox as messagebox
 import tkinter.ttk as ttk
 
 from . import theme
-from .announcements import AnnouncementStep
+from .announcements import NoteStep
 from .logbook import Logbook
 from .model import Note, Runsheet, Step, StepState
 from .step_panel import StepPanel, format_hms_fixed
@@ -221,7 +221,7 @@ class RunsheetApp(tk.Tk):
 
         def pack_notes(anchor: int) -> None:
             for note in notes_by_anchor.get(anchor, []):
-                note_panel = AnnouncementStep(self.list_frame, "NOTE", note.text, theme.GRAY)
+                note_panel = NoteStep(self.list_frame, note.text)
                 note_panel.pack(fill="x", padx=20, pady=6)
                 pseudo_steps.append(note_panel)
 

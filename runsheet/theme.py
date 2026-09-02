@@ -34,6 +34,12 @@ BLACK_TINT = "#eef0f2"
 GRAY = "#8a929c"
 GRAY_TINT = "#ffffff"
 
+# Pale, warm background for a Note pseudo-step card — deliberately not one
+# of BG_PANEL/BG_APP/BG_HEADER's cool neutrals, so a note reads as a
+# different kind of thing at a glance while scrolling, not just another
+# (oddly shaped) step panel.
+NOTE_TINT = "#faf7ee"
+
 RED = "#dc2626"
 RED_TINT = "#fdecec"
 
