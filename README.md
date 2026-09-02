@@ -1,6 +1,8 @@
 # Runsheet
 
-A basic portable UI for following a click-ops runsheet (checklist).
+A simple portable ClickOps UI for following a runsheet. See the [rationale](RATIONALE.md) for more details..
+
+![UI](images/ui.png)
 
 ## Features
 
@@ -8,12 +10,13 @@ A basic portable UI for following a click-ops runsheet (checklist).
 - Parallel execution.
 - Optional timers.
 - Session log in JSONL.
+- MIT licensing see [LICENSE](LICENSE)
 
-## Requires
+## Requirements
 
 - Python 3.14 or greater with Tkinter support
 
-## Invocation
+## Usage
 
 ```sh
 python3 -m runsheet sample_runsheet.toml
@@ -33,86 +36,82 @@ python3 -m runsheet sample_runsheet.toml --validate
 
 Runs the same load-time checks (undefined `{{variables}}`, a `time_guidance`/step-time mismatch, missing `summary`, malformed `time`, an announcement with only `_started` or only `_finished`, etc.) without starting the UI. Prints `No errors` and exits 0 if the runsheet is clean; otherwise prints the first error found to stdout and exits 1. It stops at the first error — fix it and re-run to see the next one, if any.
 
+### Updating a copied runsheet
+
+```sh
+python3 -m runsheet updated_runsheet.toml --update site-b_runsheet.toml
+```
+
+For when a runsheet gets copied and customized per-environment or per-customer by editing only its `[Runsheet.variables]` values (e.g. `site-b_runsheet.toml`, a copy of `updated_runsheet.toml` with its own `change_ticket`/`db_host`/etc.), and the original later gets a structural edit — a new step, a reworded description — that needs to reach every copy without clobbering each one's own variable values.
+
+`--update` rewrites `site-b_runsheet.toml` in place with `updated_runsheet.toml`'s full content, except its `[Runsheet.variables]` table, which keeps `site-b_runsheet.toml`'s own values. The two must declare exactly the same set of variable *names* (only values may differ) and must not be the same file; the rewritten result is validated (the same checks as `--validate`) before it's written, so a broken merge never overwrites the target. Never starts the UI.
+
+### Exporting to plain text
+
+```sh
+python3 -m runsheet sample_runsheet.toml --export
+python3 -m runsheet sample_runsheet.toml --export notes/for_the_ticket.txt
+```
+
+Writes a sparse, readable, plain UTF-8 text rendering (no BOM) with every `{{variable}}` already substituted — for pasting into a ticket, printing, or archiving alongside a completed run. With no path given it writes `sample_runsheet.txt` alongside the runsheet; give `--export` a path (its parent directory must already exist) to write there instead. `--export` must come after the runsheet argument, not before it — `--export sample_runsheet.toml` on its own reads as "export with no path", leaving `sample_runsheet.toml` unmatched as the required runsheet argument. A field a step doesn't set (no `time`, no `description`, no `commands`, no announcements) is simply omitted, so most steps render as just a heading and whatever few fields they actually have. Free text (descriptions and announcements) wraps at 100 columns, with continuation lines hanging under a label's value column where there is one; headings, rules, and `Commands:` blocks (literal shell commands) are never wrapped.
+
+```
+Prod DB Migration
+==================
+Time guidance: 0:05:00
+Started:  Sample runsheet STARTED
+Finished: Sample runsheet FINISHED
+
+Step 1: Verify maintenance window with NOC
+-------------------------------------------
+Time budget: 0:00:10
+
+Confirm the change window is open in the ticketing system before touching anything.
+
+Step 5: Re-enable traffic in load balancer
+-------------------------------------------
+Commands:
+    curl -X POST "$LB_API/pools/prod/enable"
+```
+
+Never starts the UI.
+
+### `--help` / `--version`
+
+```sh
+python3 -m runsheet --help
+python3 -m runsheet --version
+```
+
+Neither starts the UI or requires a runsheet argument.
+
+### UI
+
+![UI](images/ui-usage.png)
+
+- **Step Controls**
+  - **Start**: Start a step.
+  - **Finish**: Mark a step as complete.
+  - **Abort**: Mark a step as terminated incomplete.
+  - **Reset**: Reset a finished or aborted step,
+  - **Skip**: Mark a step as not performed.
+- **Visual Countdown**
+  - Starts as solid green and decays clockwise until the time target is reached.
+  - Fills until solid amber when twice the time target has been reached.
+  - Remains solid red for any time great than twice the target.
+- **Filename**: TOML runsheet filename. Left click to copy full file path to clipboard.
+- **SHA1 Slug**: First 7 hex digits of runsheet SHA-1. Left click to copy full SHA-1 to clipboard.
+- **Log filename**: Name of JSONL log file. Left click to copy canonical path to the clipboard.
+
+### Behavior
+
+- The step view will attempt to move the current pending step and the previous step to the top of the view.
+- Multiple steps may be started to run in parallel. Upon finishing or aborting any step, the view will scrollback to the earliest pending or running step in the list.
 
 ## Runsheet Format
 
-- **[Runsheet]**: Required table of runsheet-level metadata (since it holds the required **name** field below).
-  - **name**: Required - shown next to RUNSHEET in the toolbar.
-  - **time_guidance**: Optional - a total duration guidance for the whole runsheet. When set, the RUNSHEET toolbar group shows one fixed-width digital clock: it counts down from time_guidance once the first step is started, and once that runs out it flips to counting up from zero — prefixed `+` and in bold — to show how far over the guidance the run is.
-  - **announcement_started** / **announcement_finished**: Optional - short text for the whole run. Shown as two pseudo steps bookending the step list — RUNSHEET STARTED before the first step, RUNSHEET FINISHED after the last — each just the text and a Copy chip, not a real step. A runsheet with either must have both.
-  - **[Runsheet.variables]**: Optional table of `name="value"` pairs. Reference one anywhere in name/description/summary/commands/announcements as `{{name}}` — it's substituted at load time. Referencing an undefined variable is a load error. Variable values are literal (never themselves re-scanned for `{{...}}`), and `{{...}}` is otherwise left alone, so real shell variables like `$HOME` in a commands block are untouched. To write a literal `{{name}}` without it being treated as a reference, double the braces: `{{{{name}}}}` renders as the literal text `{{name}}` (mirrors Python's `str.format()` escaping — `{{` -> `{`, `}}` -> `}`).
-- **[Step]**
-  - **summary**: Required - one line description.
-  - **description**: Optional - contextual notes.
-  - **time**: Optional - budgeted time.
-  - **commands**: Optional - command reference.
-  - **announcement_started** / **announcement_finished**: Optional - short text meant to be pasted into an external comms channel (Slack, a bridge, etc.) when the step starts/finishes. A step with either must have both.
-
-### Sample
-
-```TOML
-[Runsheet]
-name="This is displayed next to RUNSHEET in the toolbar."
-time_guidance=hh:mm:ss
-announcement_started="Short status line, copied to the clipboard, for when the whole runsheet starts."
-announcement_finished="Short status line, copied to the clipboard, for when the whole runsheet finishes."
-
-[Runsheet.variables]
-change_ticket="CHG-48213"
-db_host="pg-primary-01.internal"
-
-[[Step]]
-summary="This is a typically one line entry for {{change_ticket}}."
-description="This is a more detailed contextual explanation."
-time=hh:mm:ss
-commands="""
-ssh {{db_host}} 'ls /'
-
-rm /tmp/**
-"""
-announcement_started="Short status line, copied to the clipboard, for when this step starts."
-announcement_finished="Short status line, copied to the clipboard, for when this step finishes."
-```
-
-## UI 
-
-![UI](images/ui.png)
+See [RUNSHEET.md](RUNSHEET.md) for the full `[Runsheet]`/`[[Step]]` field reference and a sample runsheet.
 
 ## Installation
 
-Runsheet needs Python 3.14+ with Tkinter — on several platforms Tkinter is a separate package from Python itself, so it's called out below wherever that's the case.
-
-### macOS (Homebrew)
-
-```sh
-brew install python@3.14 python-tk@3.14
-```
-
-### Windows (winget)
-
-```sh
-winget install --id Python.Python.3.14
-```
-
-The official python.org installer that winget uses bundles Tkinter already, so no separate package is needed.
-
-### Debian / Ubuntu (apt)
-
-```sh
-sudo apt update
-sudo apt install python3 python3-tk
-```
-
-### Fedora / RHEL / CentOS (dnf)
-
-```sh
-sudo dnf install python3 python3-tkinter
-```
-
-### Verify
-
-```sh
-python3 -c "import tkinter; print(tkinter.TkVersion)"
-```
-
-This should print a version number (e.g. `9.0`) with no errors.
+See [INSTALL.md](INSTALL.md) for platform-specific instructions (macOS, Windows, Debian/Ubuntu, Fedora/RHEL/CentOS) and how to verify Tkinter is working.

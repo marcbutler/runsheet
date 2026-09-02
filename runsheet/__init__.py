@@ -1,3 +1,3 @@
-"""Runsheet — a Tkinter operator's checklist for running through TOML runbooks."""
+"""Runsheet — a UI for running through runsheets encoded in TOML."""
 
 __version__ = "0.1.0"

@@ -31,9 +31,9 @@ def _parse_time_seconds(value: object, field_description: str) -> int:
     return value.hour * 3600 + value.minute * 60 + value.second
 
 
-def _format_seconds(seconds: int) -> str:
-    """Plain H:MM:SS for an error message — not tied to the UI's own
-    fixed-width clock formatter, just readable in a load-time error."""
+def format_seconds(seconds: int) -> str:
+    """Plain H:MM:SS — not tied to the UI's own fixed-width clock
+    formatter, just readable in a load-time error or a text export."""
     hours, rem = divmod(seconds, 3600)
     minutes, secs = divmod(rem, 60)
     return f"{hours:d}:{minutes:02d}:{secs:02d}"
@@ -103,6 +103,93 @@ def _paired_announcements(entry: dict, error_prefix: str) -> tuple[str, str]:
             f"'announcement_finished' — a table with either must have both"
         )
     return started, finished
+
+
+def read_variables(path: Path) -> dict[str, str]:
+    """Parse just the [Runsheet.variables] table of a runsheet TOML file,
+    without loading (and requiring successful substitution across) the
+    whole thing — used to compare/merge variable dictionaries between
+    copies of a runsheet (see retarget()). Raises ValueError, with path
+    context, on invalid TOML or a malformed variables table — the same
+    checks Runsheet.load applies to this table."""
+    raw = path.read_bytes()
+    try:
+        data = tomllib.loads(raw.decode("utf-8"))
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(f"{path}: invalid TOML: {exc}") from exc
+    metadata = data.get("Runsheet", {})
+    if not isinstance(metadata, dict):
+        raise ValueError(f"{path}: [Runsheet] must be a table, not a list of tables")
+    return _parse_variables(metadata, f"{path}: [Runsheet]")
+
+
+def _toml_quote(value: str) -> str:
+    """Format a string as a TOML basic string literal."""
+    escaped = (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+    )
+    return f'"{escaped}"'
+
+
+# Matches the [Runsheet.variables] table header through to its whole body —
+# up to (not including) the next table header or end of file — so the body
+# can be swapped out wholesale while leaving everything else in the source
+# text untouched (comments, formatting, steps, all of it). The trailing
+# blank-line run is split into its own group purely so it can be preserved
+# verbatim in the replacement, keeping the usual blank-line-before-next-
+# table spacing intact rather than collapsing it away.
+_VARIABLES_TABLE_RE = re.compile(
+    r"^\[Runsheet\.variables\][ \t]*\r?\n(?:.*?\n)*?(?P<trail>\n*)(?=^\[|\Z)",
+    re.MULTILINE | re.DOTALL,
+)
+
+
+def retarget(source_path: Path, target_path: Path) -> str:
+    """Build an updated runsheet: `source`'s full content — structure,
+    steps, everything — with `target`'s own [Runsheet.variables] values
+    swapped in for source's. This is how a structural edit to a master
+    runsheet gets pushed out to a copy of it that was customized only by
+    its variables (e.g. a per-environment or per-customer copy): rerun
+    retarget with the updated master as `source` and the copy as `target`.
+
+    Both runsheets must declare exactly the same set of variable names —
+    only their values may differ — and must not be the same file (checked
+    by the caller, which also decides what to do with the result)."""
+    source_vars = read_variables(source_path)
+    target_vars = read_variables(target_path)
+
+    missing_in_target = source_vars.keys() - target_vars.keys()
+    missing_in_source = target_vars.keys() - source_vars.keys()
+    if missing_in_target or missing_in_source:
+        details = []
+        if missing_in_target:
+            details.append(f"only in {source_path}: {sorted(missing_in_target)}")
+        if missing_in_source:
+            details.append(f"only in {target_path}: {sorted(missing_in_source)}")
+        raise ValueError(
+            f"variable dictionaries don't match between {source_path} and "
+            f"{target_path} — {'; '.join(details)}"
+        )
+
+    source_text = source_path.read_text(encoding="utf-8")
+    if not source_vars:
+        return source_text  # neither side has variables — nothing to swap in
+
+    body = "".join(f"{name} = {_toml_quote(target_vars[name])}\n" for name in source_vars)
+    merged_text, count = _VARIABLES_TABLE_RE.subn(
+        lambda m: f"[Runsheet.variables]\n{body}{m['trail']}", source_text, count=1
+    )
+    if count == 0:
+        raise ValueError(
+            f"{source_path}: declares [Runsheet.variables] entries but no "
+            f"'[Runsheet.variables]' table header was found to update it — "
+            f"inline 'variables = {{...}}' tables aren't supported by --update"
+        )
+    return merged_text
 
 
 @dataclass
@@ -223,8 +310,8 @@ class Runsheet:
             if specified_seconds > time_guidance_seconds:
                 raise ValueError(
                     f"{path}: [Runsheet] field 'time_guidance' "
-                    f"({_format_seconds(time_guidance_seconds)}) is less than the sum of all "
-                    f"steps' specified 'time' budgets ({_format_seconds(specified_seconds)}) — "
+                    f"({format_seconds(time_guidance_seconds)}) is less than the sum of all "
+                    f"steps' specified 'time' budgets ({format_seconds(specified_seconds)}) — "
                     f"increase time_guidance or reduce step budgets"
                 )
 
