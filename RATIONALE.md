@@ -12,7 +12,7 @@ I'm no fan of ClickOps but understand its practicality, or more accurately the i
 of automating some procedures. This tool is meant as a proof of concept to simplify the
 book-keeping that may be required.
 
-The goal with the UI behavior and runsheet execution was to be intuitive but not overly
-rigid. Too often these procedures have strange unexpected variations. I also played around 
+The goal with the UI behavior and runsheet execution was to be intuitive but not rigid.
+Too often these procedures have strange unexpected variations. I also played around 
 with how to visually expended time in each step, that I am not convinced is intuitive but
 is at least interesting (to me).

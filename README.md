@@ -4,17 +4,19 @@ A simple portable ClickOps UI for following a runsheet. See the [rationale](RATI
 
 ![UI](images/ui.png)
 
+## Requirements
+
+- Python 3.14 or greater with Tkinter support
+
 ## Features
 
 - Sequencing with automatic advance.
 - Parallel execution.
 - Optional timers.
 - Session log in JSONL.
-- MIT licensing see [LICENSE](LICENSE)
-
-## Requirements
-
-- Python 3.14 or greater with Tkinter support
+- MIT licensing: [LICENSE](LICENSE).
+- Simplified copying using variables.
+- SHA-1 runsheet identifiers.
 
 ## Usage
 
