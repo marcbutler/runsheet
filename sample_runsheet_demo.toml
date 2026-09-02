@@ -1,0 +1,95 @@
+# Feature-tour runsheet: exercises every UI/state-machine feature in one
+# short pass. Step time budgets are in SECONDS (unrealistic for a real
+# runsheet) purely so nothing here takes more than a few seconds to
+# observe. Each step's description names the exact feature it's showing
+# and what to click.
+#
+# Whole thing should take under 5 minutes even reading every description.
+#
+# A few features live outside the running UI entirely — from a terminal,
+# also try (see README.md):
+#   python3 -m runsheet sample_runsheet_demo.toml --validate
+#   python3 -m runsheet sample_runsheet_demo.toml --export
+#   python3 -m runsheet sample_runsheet_demo.toml --update sample_runsheet.toml
+
+[Runsheet]
+name = "Feature tour"
+# Deliberately short — during a normal few-minute walk through this file,
+# the RUNSHEET clock (top toolbar) will count down from 1:00 and then flip
+# to counting up from zero with a bold '+', demonstrating the overtime
+# behavior without any extra waiting.
+time_guidance = 00:01:00
+
+[Runsheet.variables]
+change_ticket = "DEMO-0001"
+demo_host = "demo-host.example"
+
+[[Step]]
+kind = "note"
+text = "RUNSHEET DEMO STARTED — this note is itself feature #1: a kind=\"note\" [[Step]] entry placed before the first step. It has no state, no numbering, and isn't part of the step list or progress count — just text and a Copy chip. Read each step's own description before acting; it calls out exactly what to click and watch for."
+
+[[Step]]
+summary = "Bare step — no timer, no commands, no announcements"
+description = "The minimum a step needs is just 'summary'. Start it, then Finish it, and notice selection auto-advances to the next open step."
+
+[[Step]]
+summary = "Timed step — normal completion"
+description = "Demonstrates the circular time-budget clock. Budget is 5s. Start it and Finish before 5s is up to see the green ring drain smoothly without ever turning amber."
+time = 00:00:05
+
+[[Step]]
+summary = "Timed step — overtime (green -> amber -> red)"
+description = "Same clock, deliberately run over budget. Budget is 3s: Start this step, then WAIT without finishing — 0-3s the ring drains green, 3-6s it fills amber (the grace period, up to 2x budget), and past 6s it turns solid red and stays there. Finish/Skip/Reset whenever you're done watching."
+time = 00:00:03
+
+[[Step]]
+summary = "Commands block"
+description = "A read-only, monospace Commands box — including a blank line inside it, preserved as-is."
+commands = """
+ssh {{demo_host}} 'systemctl status app.service'
+
+echo 'blank line above is preserved'
+"""
+
+[[Step]]
+summary = "Per-step announcements"
+description = "The ANNOUNCEMENTS box only appears when a step has announcement_started/announcement_finished (a step with either must have both). Start this step and click Copy next to STARTED, then Finish it and Copy next to FINISHED."
+announcement_started = "🔧 [{{change_ticket}}] Feature-tour step started."
+announcement_finished = "✅ [{{change_ticket}}] Feature-tour step finished."
+
+[[Step]]
+summary = "Variables — {{change_ticket}} on {{demo_host}}"
+description = "Demonstrates variable substitution: {{change_ticket}} and {{demo_host}} above/below come from [Runsheet.variables] at load time. To write a literal, non-substituted placeholder instead, double the braces — {{{{example}}}} in the TOML source renders as the literal text {{{{example}}}} you see here."
+commands = "ssh {{demo_host}} 'uptime'"
+
+[[Step]]
+kind = "note"
+text = "NOTE DEMO, variation #2 — same kind=\"note\" mechanism as the opening note, but anchored between two tasks instead of before the first one. Proves notes can be interspersed anywhere, not just at the very start/end."
+
+[[Step]]
+summary = "Parallel demo, part 1 of 2 — start me, then start the next step too"
+description = "Runsheet doesn't enforce linear order. Click START here, then — WITHOUT finishing this one — select and START the next step. Both will show ACTIVE at once."
+
+[[Step]]
+summary = "Parallel demo, part 2 of 2 — now Finish this one first"
+description = "Both this step and the previous one are ACTIVE. Finish THIS step first: selection should jump back to the earliest step that's still open (the previous one, still ACTIVE) rather than moving forward — the runsheet always scans from the top, not just forward from wherever you are."
+
+[[Step]]
+summary = "Skip"
+description = "SKIP marks a step as not performed, no confirmation needed. Click SKIP."
+
+[[Step]]
+summary = "Reset, variation #1 — from Active (no confirmation)"
+description = "Click START, then click RESET without finishing. Resetting an ACTIVE (or SKIPPED) step goes straight back to PENDING — no dialog, nothing to lose."
+
+[[Step]]
+summary = "Reset, variation #2 — from Finished (confirmation required)"
+description = "Click START, then FINISH, then RESET the completed step. This time a confirm dialog appears first — undoing already-finished work is consequential enough to double-check."
+
+[[Step]]
+summary = "Abort"
+description = "ABORT sits between FINISH and RESET. Click START, then ABORT instead of FINISH: the step still ends up FINISHED (same tick badge, same auto-advance) — but the JSONL session log records an 'aborted' event instead of 'finished', flagging that this run of the step didn't succeed."
+
+[[Step]]
+kind = "note"
+text = "RUNSHEET DEMO FINISHED — note variation #3: anchored after the very last step, same as the old runsheet-level 'finished announcement' used to be, now just an ordinary note. Last thing to try: click END in the toolbar for the 3-way exit dialog (Cancel and return / Exit and keep the JSONL log / Exit and delete it)."

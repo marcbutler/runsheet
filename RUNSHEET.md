@@ -65,5 +65,6 @@ text="Short status line, copied to the clipboard, for when the whole runsheet fi
 
 ## Examples
 
-- [sample_runsheet.toml](sample_runsheet.toml)
-- [sample_runsheet_large.toml](sample_runsheet_large.toml)
+- [sample_runsheet_demo.toml](sample_runsheet_demo.toml) — a feature tour: every UI feature (including running a step overtime) in one pass, under 5 minutes, with each step's description naming exactly what it's demonstrating. Start here.
+- [sample_runsheet.toml](sample_runsheet.toml) - deprecated basic test.
+- [sample_runsheet_large.toml](sample_runsheet_large.toml) - large sheet for testing runsheet visual behavior.
