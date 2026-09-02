@@ -13,6 +13,7 @@ A simple portable ClickOps UI for following a runsheet. See the [rationale](RATI
 - Sequencing with automatic advance.
 - Parallel execution.
 - Optional timers.
+- Discrete event logging.
 - Session log in JSONL.
 - MIT licensing: [LICENSE](LICENSE).
 - Simplified copying using variables.
@@ -24,7 +25,7 @@ A simple portable ClickOps UI for following a runsheet. See the [rationale](RATI
 python3 -m runsheet sample_runsheet.toml
 ```
 
-This creates a JSONL session log named `<runsheet-stem>_<timestamp>.jsonl` (e.g. `sample_runsheet_20260902-143205.jsonl`) **next to the runsheet file** — since the example above runs from the same directory the runsheet lives in, that log lands in the current directory too. Point at a runsheet elsewhere (`python3 -m runsheet ~/ops/runsheet.toml`) and the log goes next to *that* file instead, not your current directory. Pass `--log-dir` to put it somewhere else entirely:
+Open the runsheet in the UI. Automatically creates a session log named `<runsheet-stem>_<timestamp>.jsonl` (e.g. `sample_runsheet_20260902-143205.jsonl`) **next to the runsheet file** — since the example above runs from the same directory the runsheet lives in, that log lands in the current directory too. Point at a runsheet elsewhere (`python3 -m runsheet ~/ops/runsheet.toml`) and the log goes next to *that* file instead, not your current directory. Pass `--log-dir` to put it somewhere else entirely:
 
 ```sh
 python3 -m runsheet sample_runsheet.toml --log-dir ~/runsheet-logs
